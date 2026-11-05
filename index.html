@@ -13,6 +13,7 @@
 .icon-button{width:46px;height:46px;border:1px solid #415875;border-radius:14px;color:white;background:#0a1728eF;display:grid;place-items:center;position:relative;box-shadow:0 5px 16px #0005;transition:background .2s,border-color .2s,transform .2s}
 .icon-button:hover{background:#162944;border-color:var(--gold)}.icon-button:active{transform:scale(.96)}.icon-button svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .bell-dot{position:absolute;right:8px;top:7px;width:8px;height:8px;background:#ff4e55;border:1px solid #081321;border-radius:50%;box-shadow:0 0 7px #ff4e5577}
+.notification-wrap{position:relative}.notification-panel{position:absolute;z-index:30;left:0;top:56px;width:min(360px,calc(100vw - 28px));padding:15px;border:1px solid #b98b3a;border-radius:14px;background:linear-gradient(145deg,#10223a,#07111e);box-shadow:0 16px 38px #000b}.notification-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.notification-head strong{color:#ffe49a}.notification-head button{border:1px solid #526985;border-radius:8px;padding:5px 8px;background:#0a1728;color:#dce5f2;font-size:.7rem}.notification-item{padding:10px 0;border-top:1px solid #2b405b}.notification-item b{display:block;font-size:.83rem}.notification-item small{display:block;margin-top:3px;color:#aebed1;font-size:.72rem}.notification-empty{padding:14px 8px;border:1px dashed #526985;border-radius:10px;color:#b6c2d3;text-align:center;font-size:.82rem}.notification-foot{margin:10px 0 0;color:#8295ad;font-size:.68rem}
 .header{text-align:center;padding:12px 0 16px}.brand{display:flex;justify-content:center;align-items:center;gap:clamp(12px,3vw,28px);min-height:clamp(100px,14vw,160px)}
 .logo-placeholder{width:clamp(104px,18vw,172px);aspect-ratio:1;object-fit:contain;display:block;filter:drop-shadow(0 0 20px #e6b94970);flex-shrink:0}
 .brand-title{text-align:left;display:block;width:min(70%,720px);height:auto;max-height:166px;object-fit:contain;filter:drop-shadow(0 8px 16px #000b)}
@@ -74,9 +75,12 @@
 <div class="site-bg"></div>
 <div class="wrap">
   <div class="topbar">
-    <button class="icon-button" id="notificationButton" aria-label="Notifikasi" title="Notifikasi">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="bell-dot"></span>
+    <div class="notification-wrap">
+    <button class="icon-button" id="notificationButton" aria-label="Notifikasi" title="Notifikasi" aria-expanded="false" aria-controls="notificationPanel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="bell-dot" id="bellDot"></span>
     </button>
+    <section id="notificationPanel" class="notification-panel hidden" aria-label="Pemberitahuan pertandingan" aria-live="polite"><div class="notification-head"><strong>Notifikasi Liga</strong><button type="button" id="markNotificationsRead">Tandai dibaca</button></div><div id="notificationList"><div class="notification-empty">Memuat notifikasi...</div></div><p class="notification-foot">Pembaruan skor dari Database Production.</p></section>
+    </div>
   </div>
   <header class="header">
     <div class="brand"><img class="logo-placeholder" src="lalaku-logo.png" alt="Logo eFootball Lalaku League"><img class="brand-title" src="lalaku-season-2-title.png" alt="Lalaku Season 2"></div>
@@ -218,12 +222,21 @@ $('admin-score-panel').addEventListener('click',async e=>{
 $('admin-reload').addEventListener('click',async()=>{if(!isAdmin())return;$('admin-save-status').textContent='Memuat ulang skor...';try{const snap=await db.ref('lalakuLeagueSeason2/matches').once('value');scores=snap.val()||{};renderAll();renderAdminFixtures();$('admin-save-status').textContent='Data skor berhasil dimuat ulang.';}catch(e){$('admin-save-status').textContent='Gagal memuat: '+(e.code||e.message);}});
 function renderAll(){if(currentPage==='dashboard')renderDashboard();else if(currentPage!=='home')refreshCurrentPage();}
 document.addEventListener('click',e=>{if(e.target.closest('#print-standings')){window.print();return;}const rb=e.target.closest('[data-round]');if(rb){selectedRound=Number(rb.dataset.round);refreshCurrentPage();return;}const mb=e.target.closest('[data-matchday]');if(mb){selectedMatchday=Number(mb.dataset.matchday);refreshCurrentPage();return;}const pb=e.target.closest('[data-page]');if(pb){openPage(pb.dataset.page);return;}const player=e.target.closest('[data-player]');if(player){openPlayer(player.dataset.player);return;}});
-$('notificationButton').addEventListener('click',()=>alert('Notifikasi belum aktif.'));
+const notificationSeenKey='lalakuLeagueSeason2_notificationsSeenAt';
+ function notificationRecords(){return Object.values(scores||{}).filter(s=>validScore(s)&&s.status==='played').sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).slice(0,8);}
+ function renderNotifications(){
+   const records=notificationRecords(),seenAt=Number(localStorage.getItem(notificationSeenKey)||0),unread=records.filter(s=>(s.updatedAt||0)>seenAt).length;
+   $('notificationList').innerHTML=records.length?records.map(s=>{const date=s.updatedAt?new Date(s.updatedAt).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'}):'Waktu tidak tersedia';return '<article class="notification-item"><b>'+s.home+' '+s.homeScore+' – '+s.awayScore+' '+s.away+'</b><small>Putaran '+s.round+' · Pekan '+s.matchday+' · '+date+'</small></article>';}).join(''):'<div class="notification-empty">Belum ada pembaruan pertandingan. Notifikasi akan muncul setelah admin menyimpan skor resmi.</div>';
+   $('bellDot').classList.toggle('hidden',unread===0);$('notificationButton').setAttribute('aria-label',unread?'Notifikasi, '+unread+' pembaruan belum dibaca':'Notifikasi');$('notificationButton').title=unread?unread+' pembaruan belum dibaca':'Notifikasi';
+ }
+ $('notificationButton').addEventListener('click',()=>{const panel=$('notificationPanel'),opening=panel.classList.contains('hidden');panel.classList.toggle('hidden',!opening);$('notificationButton').setAttribute('aria-expanded',String(opening));if(opening)renderNotifications();});
+ $('markNotificationsRead').addEventListener('click',()=>{const latest=notificationRecords().reduce((m,s)=>Math.max(m,s.updatedAt||0),0);localStorage.setItem(notificationSeenKey,String(Math.max(Date.now(),latest)));renderNotifications();});
+ document.addEventListener('click',e=>{if(!e.target.closest('.notification-wrap')){$('notificationPanel').classList.add('hidden');$('notificationButton').setAttribute('aria-expanded','false');}});
 renderAdminFixtures();
 if(scheduleIssues.length)console.error('Validasi jadwal:',scheduleIssues);else console.info('Validasi jadwal: 132 fixture valid.');
 auth.onAuthStateChanged(user=>{const admin=isAdmin(user);$('admin-score-panel').classList.toggle('hidden',!admin);if(admin)renderAdminFixtures();$('admin-auth-status').textContent=admin?`Admin terverifikasi (UID sesuai). Firebase Production aktif.`:user?`Login sebagai ${user.email}, tetapi bukan UID admin. Hak input skor dinonaktifkan.`:'Mode pengunjung. Jadwal, hasil, dan klasemen dapat dilihat.';});
 // Public read listener: visitor and admin see the same saved match records.
-db.ref('lalakuLeagueSeason2/matches').on('value',snap=>{scores=snap.val()||{};renderAll();if(isAdmin())renderAdminFixtures();},err=>{console.error(err);$('admin-auth-status').textContent='Gagal membaca Firebase Production: '+(err.code||err.message);});
+db.ref('lalakuLeagueSeason2/matches').on('value',snap=>{scores=snap.val()||{};renderNotifications();renderAll();if(isAdmin())renderAdminFixtures();},err=>{console.error(err);$('admin-auth-status').textContent='Gagal membaca Firebase Production: '+(err.code||err.message);});
 showDashboard();
 </script>
 </body></html>
